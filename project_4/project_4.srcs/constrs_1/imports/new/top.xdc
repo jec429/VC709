@@ -25,7 +25,11 @@ set_property PACKAGE_PIN AP42 [get_ports {not_empty[6]}]
 set_property PACKAGE_PIN AU39 [get_ports {not_empty[7]}]
 
 
-create_clock -period 7.700 -name clk -waveform {0.000 3.850} -add [get_ports clk_pin_p]
+create_clock -period 1.538 -name clk -waveform {0.000 0.769} -add [get_ports clk_pin_p]
+
+
+
+
 
 
 

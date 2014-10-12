@@ -25,13 +25,30 @@ module Verilog_top(
     input wire clk_pin_n,
     input wire rst_pin,
     input wire en_proc,
-    output wire [7:0] not_empty
+    output reg [7:0] not_empty
     );
     
-    pipe_mult #(.STAGES(3), .AWIDTH(21), .BWIDTH(12))
-        stage2_5mult_0(.pipe_in(en2_5), .pipe_out(en3b), .clk(proc_clk),
-        .a(is2_2), .b(12'h1E8), .p(pre_is2_2_5[32:0]));
+    reg [15:0] inA;
+    reg [15:0] inB;
+    //reg [31:0] outP;
+    wire [31:0] outP;
+    wire pipe;
+    initial begin
+        inA = 0;
+        inB = 0;
+    end
     
+    always @(posedge clk_pin_p) begin
+        inA <= 16'd50;
+        inB <= 16'd40;
+        //outP <= inA * inB;
+        not_empty <= outP[7:0];
+    end
+    
+    
+    pipe_mult #(.STAGES(2), .AWIDTH(16), .BWIDTH(16))
+        stage2_5mult_0(.pipe_in(en_proc), .pipe_out(pipe), .clk(clk_pin_p),
+        .a(inA), .b(inB), .p(outP));
     
     
     
