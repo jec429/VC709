@@ -11,7 +11,26 @@ set_property PACKAGE_PIN AV40 [get_ports rst_pin]
 set_property PACKAGE_PIN AU38 [get_ports en_proc]
 set_property PACKAGE_PIN AM39 [get_ports not_empty]
 
-create_clock -period 7.640 -name clk -waveform {0.000 3.820} -add [get_ports clk_pin_p]
+create_clock -period 5.600 -name clk -waveform {0.000 2.800} -add [get_ports clk_pin_p]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
