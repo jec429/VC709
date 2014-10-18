@@ -20,7 +20,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module TrackletCombiner(
+module TrackletCombiner_test(
     input clk,
     input reset,
     input en_proc,
@@ -310,45 +310,43 @@ module TrackletCombiner(
    
     
     //////////////////////////////////////////////////////////////////
-    
+       
     parameter krA = 12'sd981;
     parameter krB = 12'sd1514;
-    parameter PHI_BITS = 17;
-    parameter Z_BITS = 8;
-    parameter PHID_BITS = 11;
-    parameter ZD_BITS = 8;
-    parameter layer = 1'b1;
-    parameter rproj = 16'h86a;
     
     // Step 0: Define the variables
-    wire signed [7:0] r_A_0;
-    wire [11:0] z_A_0;
-    wire [16:0] phi_A_0;
-    wire signed [7:0] r_B_0;
-    wire [11:0] z_B_0;
-    wire [16:0] phi_B_0;
+    reg signed [7:0] r_A_0;
+    reg [11:0] z_A_0;
+    reg [16:0] phi_A_0;
+    reg signed [7:0] r_B_0;
+    reg [11:0] z_B_0;
+    reg [16:0] phi_B_0;
     
-    wire signed [11:0] k_r_A;
-    wire signed [11:0] k_r_B;
+    reg signed [11:0] k_r_A;
+    reg signed [11:0] k_r_B;
 
     // Why multiply these numbers???????
     // Because you want to always have the same number of bits for all layers
     // phi = 17, r = 8, z =8
     
-    assign r_A_0        = innerallstubin[32:26]<<<1'b1;
-    assign z_A_0        = innerallstubin[25:14];
-    assign phi_A_0      = innerallstubin[13:0]<<<2'b11;
-    assign r_B_0        = outerallstubin[32:26]<<<1'b1;
-    assign z_B_0        = outerallstubin[25:14];
-    assign phi_B_0      = outerallstubin[13:0]<<<2'b11;
-    assign k_r_A        = krA;
-    assign k_r_B        = krB;
+    
+    
+    always @(posedge clk) begin
+        k_r_A        <= krA;
+        k_r_B        <= krB;
+        r_A_0        <= innerallstubin[32:26]<<<1'b1;
+        z_A_0        <= innerallstubin[25:14];
+        phi_A_0      <= innerallstubin[13:0]<<<2'b11;
+        r_B_0        <= outerallstubin[32:26]<<<1'b1;
+        z_B_0        <= outerallstubin[25:14];
+        phi_B_0      <= outerallstubin[13:0]<<<2'b11;
+    end
     
     
     // Step 1: Calculate deltas and absolute radii
     // Carry over:
-    reg [11:0] z_A_1;
-    reg [16:0] phi_A_1;
+    wire [11:0] z_A_pipe13;
+    wire [16:0] phi_A_pipe13;
     // Declare:
     reg signed [14:0] idelta_phi_1;
     reg signed [12:0] idelta_z_1;
@@ -356,9 +354,17 @@ module TrackletCombiner(
     reg signed [12:0] rA_abs_1;
     reg signed [12:0] rB_abs_1;
     
+    pipe_delay #(.STAGES(33), .WIDTH(12))
+            z_A_pipe(.pipe_in(en2_5), .pipe_out(en5b), .clk(clk),
+            .val_in(z_A_0), .val_out(z_A_pipe13));
+    pipe_delay #(.STAGES(33), .WIDTH(17))
+            phi_A_pipe(.pipe_in(en2_5), .pipe_out(en5b), .clk(clk),
+            .val_in(phi_A_0), .val_out(phi_A_pipe13));
+    
+    
     always @(posedge clk) begin
-        z_A_1             <= z_A_0;
-        phi_A_1             <= phi_A_0;
+        //z_A_1             <= z_A_0;
+        //phi_A_1             <= phi_A_0;
         idelta_phi_1     <= phi_B_0 - phi_A_0; // bit size mismatch here
         idelta_z_1         <= z_B_0 - z_A_0;
         idelta_r_1        <= (k_r_B-k_r_A)+(r_B_0 - r_A_0);
@@ -366,18 +372,31 @@ module TrackletCombiner(
         rB_abs_1            <= k_r_B+r_B_0;
     end
     
+    wire signed [14:0] idelta_phi_pipe8;
+    
+    pipe_delay #(.STAGES(22), .WIDTH(15))
+        idelta_phi_pipe(.pipe_in(en2_5), .pipe_out(en5b), .clk(clk),
+        .val_in(idelta_phi_1), .val_out(idelta_phi_pipe8));
+    
+    wire signed [12:0] idelta_z_pipe9;
+    
+    pipe_delay #(.STAGES(23), .WIDTH(13))
+        idelta_z_pipe(.pipe_in(en2_5), .pipe_out(en5b), .clk(clk),
+        .val_in(idelta_z_1), .val_out(idelta_z_pipe9));
+    
+    wire signed [12:0] rA_abs_pipe10;
+    
+    pipe_delay #(.STAGES(25), .WIDTH(13))
+                    rA_abs_pipe(.pipe_in(en2_5), .pipe_out(en5b), .clk(clk),
+                    .val_in(rA_abs_1), .val_out(rA_abs_pipe10));
     // Step 2: Lookup dr inverse
     // Carry over:
     reg signed [14:0] idelta_phi_2;
-    reg signed [12:0] idelta_z_2;
-    reg signed [12:0] rA_abs_2;
-    reg [11:0] z_A_2;
-    reg [16:0] phi_A_2;
     // Declare:
     wire signed [17:0] idr_inv_2;
     reg [23:0] full_it1;    
+    reg [23:0] full_it1_pipe;    
     wire [11:0] it1_2;
-    wire [95:0] LUT_file;
     
     // how do I write to this memory?
     Memory #(18, 14, "D:/GLIB Firmware/branches/jectest/prj/viv_1/project_2/dr_inv.txt") lookup_dr_inv(
@@ -385,302 +404,275 @@ module TrackletCombiner(
         .output_data(idr_inv_2),
         // Input
         .clock(clk),
-        .write_address(14'b0),
-        .write_enable(1'b0),
-        .read_address(idelta_r_1),
-        .input_data(18'b0)
+        .read_address(idelta_r_1)
     );
+    
+    wire signed [17:0] idr_inv_pipe8;
+    
+    pipe_delay #(.STAGES(19), .WIDTH(18))
+        idr_inv_pipe(.pipe_in(en2_5), .pipe_out(en5b), .clk(clk),
+        .val_in(idr_inv_2), .val_out(idr_inv_pipe8));
     
     always @(posedge clk) begin
         idelta_phi_2     <= idelta_phi_1;
-        idelta_z_2         <= idelta_z_1;
-        rA_abs_2            <= rA_abs_1;
-        z_A_2             <= z_A_1;
-        phi_A_2             <= phi_A_1;
+        //idelta_z_2         <= idelta_z_1;
+        //rA_abs_2            <= rA_abs_1;
+        //z_A_2             <= z_A_1;
+        //phi_A_2             <= phi_A_1;
         full_it1            <= rA_abs_1 * rB_abs_1;
+        full_it1_pipe       <= full_it1;
     end
     
-    assign it1_2 = full_it1 >>>4'd12;
+    assign it1_2 = full_it1_pipe >>>4'd12;
+    
+    wire [11:0] it1_pipe4;
+    
+    pipe_delay #(.STAGES(6), .WIDTH(12))
+        it1_pipe(.pipe_in(en2_5), .pipe_out(en5b), .clk(clk),
+        .val_in(it1_2), .val_out(it1_pipe4));
     
     // Step 3: 
     // Carry over
-    reg [11:0] it1_3;    
     reg [17:0] idr_inv_3;
     reg signed [14:0] idelta_phi_3;
-    reg signed [12:0] idelta_z_3;
-    reg signed [12:0] rA_abs_3;
-    reg [11:0] z_A_3;
-    reg [16:0] phi_A_3;
     // Declare:
     reg signed [23:0] full_it2;
-    wire signed [15:0] it2_3;
+    reg signed [23:0] full_it2_pipe;
+    reg signed [15:0] it2_3;
     
     always @(posedge clk) begin
-        it1_3             <= it1_2;
+        //it1_3             <= it1_2;
         idr_inv_3         <= idr_inv_2;
         idelta_phi_3     <= idelta_phi_2;
-        idelta_z_3         <= idelta_z_2;
-        rA_abs_3            <= rA_abs_2;
-        z_A_3             <= z_A_2;
-        phi_A_3             <= phi_A_2;
-        full_it2            <= idr_inv_2 * idelta_phi_2;
+        //idelta_z_3         <= idelta_z_2;
+        //rA_abs_3            <= rA_abs_2;
+        //z_A_3             <= z_A_2;
+        //phi_A_3             <= phi_A_2;
+        full_it2            <= idr_inv_3 * idelta_phi_3;
+        full_it2_pipe   <= full_it2;
+        it2_3           <= full_it2_pipe >>> 4'b1000;
     end
-    
-    assign it2_3 = full_it2 >>> 4'b1000;
-    
+        
     // Step 4: 
-    // Carry over
-    reg [11:0] it1_4;    
-    reg [17:0] idr_inv_4;
-    reg signed [14:0] idelta_phi_4;
-    reg signed [12:0] idelta_z_4;
-    reg signed [12:0] rA_abs_4;
-    reg [11:0] z_A_4;
-    reg [16:0] phi_A_4;
     // Declare:
     reg [31:0] full_it3;
-    wire [23:0] it3_4;
+    reg [31:0] full_it3_pipe;
+    reg [23:0] it3_4;
     
     always @(posedge clk) begin
-        it1_4             <= it1_3;
-        idr_inv_4         <= idr_inv_3;
-        idelta_phi_4     <= idelta_phi_3;
-        idelta_z_4         <= idelta_z_3;
-        rA_abs_4            <= rA_abs_3;
-        z_A_4             <= z_A_3;
-        phi_A_4             <= phi_A_3;
+        //it1_4             <= it1_3;
+        //idr_inv_4         <= idr_inv_3;
+        //idelta_phi_4     <= idelta_phi_3;
+        //idelta_z_4         <= idelta_z_3;
+        //rA_abs_4            <= rA_abs_3;
+        //z_A_4             <= z_A_3;
+        //phi_A_4             <= phi_A_3;
         full_it3            <= it2_3 * it2_3;
+        full_it3_pipe       <= full_it3;
+        it3_4 <= full_it3_pipe >>> 4'd12;
     end
-    
-    assign it3_4 = full_it3 >>> 4'd12;
     
     // Step 5: 
-    // Carry over:
-    reg [17:0] idr_inv_5;
-    reg signed [14:0] idelta_phi_5;
-    reg signed [12:0] idelta_z_5;
-    reg signed [12:0] rA_abs_5;
-    reg [11:0] z_A_5;
-    reg [16:0] phi_A_5;
     // Declare:
     reg [35:0] full_idelta;
-    wire [40:0] pre_idelta_tmp_5;
+    reg [35:0] full_idelta_pipe;
+    reg [40:0] pre_idelta_tmp_5;
     
     always @(posedge clk) begin
-        idr_inv_5         <= idr_inv_4;
-        idelta_phi_5     <= idelta_phi_4;
-        idelta_z_5         <= idelta_z_4;
-        rA_abs_5            <= rA_abs_4;
-        z_A_5                <= z_A_4;
-        phi_A_5             <= phi_A_4;
-        full_idelta     <= it1_4 * it3_4;
+        //idr_inv_5         <= idr_inv_4;
+        //idelta_phi_5     <= idelta_phi_4;
+        //idelta_z_5         <= idelta_z_4;
+        //rA_abs_5            <= rA_abs_4;
+        //z_A_5                <= z_A_4;
+        //phi_A_5             <= phi_A_4;
+        full_idelta     <= it1_pipe4 * it3_4;
+        full_idelta_pipe <= full_idelta;
+        pre_idelta_tmp_5 <= full_idelta_pipe <<< 3'h7;
     end
     
-    assign pre_idelta_tmp_5 = full_idelta <<< 3'h7;
     // Step 6:
-    // Carry over:
-    reg [17:0] idr_inv_6;
-    reg signed [14:0] idelta_phi_6;
-    reg signed [12:0] idelta_z_6;
-    reg signed [12:0] rA_abs_6;
-    reg [11:0] z_A_6;
-    reg [16:0] phi_A_6;
     reg [40:0] full_idelta_tmp;
-    // Declare:
-    wire [6:0] idelta_tmp_6; // WHY DO WE DO THIS????
+    reg [40:0] full_idelta_tmp_pipe;
+    reg [6:0] idelta_tmp_6; // WHY DO WE DO THIS????
 
     always @(posedge clk) begin
-        idr_inv_6             <= idr_inv_5;
-        idelta_phi_6         <= idelta_phi_5;
-        idelta_z_6             <= idelta_z_5;
-        rA_abs_6                <= rA_abs_5;
-        z_A_6                 <= z_A_5;
-        phi_A_6                <= phi_A_5;
+        //idr_inv_6             <= idr_inv_5;
+        //idelta_phi_6         <= idelta_phi_5;
+        //idelta_z_6             <= idelta_z_5;
+        //rA_abs_6                <= rA_abs_5;
+        //z_A_6                 <= z_A_5;
+        //phi_A_6                <= phi_A_5;
         full_idelta_tmp    <= pre_idelta_tmp_5 * 8'hb7;
+        full_idelta_tmp_pipe <= full_idelta_tmp;
+        idelta_tmp_6 <= full_idelta_tmp_pipe >>> 8'h23;
     end
-    
-    assign idelta_tmp_6 = full_idelta_tmp >>> 8'h23;
-    
+        
     // Step 7:
-    // Carry over:
     reg signed [6:0] idelta_tmp_7;
-    reg [17:0] idr_inv_7;
-    reg signed [14:0] idelta_phi_7;
-    reg signed [12:0] idelta_z_7;
-    reg signed [12:0] rA_abs_7;
-    reg [11:0] z_A_7;
-    reg [16:0] phi_A_7;
     // Declare:
     reg [17:0] it4_7;
     
     always @(posedge clk) begin
-        idr_inv_7         <= idr_inv_6;
+        //idr_inv_7         <= idr_inv_6;
         idelta_tmp_7     <= idelta_tmp_6; // bit size mismatch fixed
-        idelta_phi_7     <= idelta_phi_6;
-        idelta_z_7         <= idelta_z_6;
-        rA_abs_7            <= rA_abs_6;
-        z_A_7             <= z_A_6;
-        phi_A_7             <= phi_A_6;
+        //idelta_phi_7     <= idelta_phi_6;
+        //idelta_z_7         <= idelta_z_6;
+        //rA_abs_7            <= rA_abs_6;
+        //z_A_7             <= z_A_6;
+        //phi_A_7             <= phi_A_6;
         it4_7             <= 17'h10000 + 3*(idelta_tmp_6 >>> 1'b1);
     end
     
     // Step 8:
-    // Carry over:
-    reg [17:0] idr_inv_8;
-    reg signed [14:0] idelta_phi_8;
-    reg signed [12:0] idelta_z_8;
-    reg signed [12:0] rA_abs_8;
-    reg [11:0] z_A_8;
-    reg [16:0] phi_A_8;
     // Declare:
-    reg [23:0] full_it5;
-    wire [16:0] it5_8;
-    wire [12:0] pre_it5_8;
+    wire [23:0] full_it5_test;
+    reg [12:0] pre_it5_8;
+    
+    pipe_mult #(.STAGES(3), .AWIDTH(18), .BWIDTH(7))
+            full_it5_mult(.pipe_in(en_proc), .pipe_out(pipe), .clk(clk),
+            .a(it4_7), .b(idelta_tmp_7), .p(full_it5_test));
     
     always @(posedge clk) begin
-        idr_inv_8         <= idr_inv_7;
-        idelta_phi_8     <= idelta_phi_7;
-        idelta_z_8         <= idelta_z_7;
-        rA_abs_8            <= rA_abs_7;
-        z_A_8             <= z_A_7;
-        phi_A_8             <= phi_A_7;
-        full_it5         <= idelta_tmp_7 * it4_7;
+        //idr_inv_8           <= idr_inv_7;
+        //idelta_phi_8        <= idelta_phi_7;
+        //idelta_z_8          <= idelta_z_7;
+        //rA_abs_8            <= rA_abs_7;
+        //z_A_8               <= z_A_7;
+        //phi_A_8             <= phi_A_7;
+        pre_it5_8           <= (17'h10000 - (full_it5_test >>> 5'b10000)) >>> 3'b100;
     end
-    
-    assign it5_8 = 17'h10000 - (full_it5 >>> 5'b10000); // size mismatch
-    assign pre_it5_8 = (17'h10000 - (full_it5 >>> 5'b10000)) >>> 3'b100;
     
     // Step 9:
-    // Carry over:
     reg signed [14:0] idelta_phi_9;
-    reg signed [12:0] idelta_z_9;
-    reg signed [12:0] rA_abs_9;
-    reg [35:0] it5_9;
-    reg [11:0] z_A_9;
-    reg [16:0] phi_A_9;
-    // Declare:
     reg [30:0] full_iDelta_inv;
-    wire signed [18:0] iDelta_inv_9;
+    reg [30:0] full_iDelta_inv_pipe;
+    reg signed [17:0] iDelta_inv_9;
     
     always @(posedge clk) begin
-        idelta_phi_9         <= idelta_phi_8;
-        idelta_z_9             <= idelta_z_8;
-        rA_abs_9                <= rA_abs_8;
-        it5_9                    <= it5_8;
-        z_A_9                 <= z_A_8;
-        phi_A_9                 <= phi_A_8;
-        full_iDelta_inv     <= idr_inv_8 * pre_it5_8;
+        idelta_phi_9         <= -idelta_phi_pipe8;
+        //idelta_z_9             <= idelta_z_8;
+        //rA_abs_9                <= rA_abs_8;
+        //it5_9                    <= it5_8;
+        //z_A_9                 <= z_A_8;
+        //phi_A_9                 <= phi_A_8;
+        full_iDelta_inv     <= idr_inv_pipe8 * pre_it5_8;
+        full_iDelta_inv_pipe <= full_iDelta_inv;
+        iDelta_inv_9        <= full_iDelta_inv_pipe >>> 4'd12;
     end
     
-    assign iDelta_inv_9 = full_iDelta_inv >>> 4'd12;
-    
     // Step 10:
-    // Carry over:
-    reg signed [12:0] rA_abs_10;
-    reg [35:0] it5_10;
-    reg [11:0] z_A_10;
-    reg [16:0] phi_A_10;
-    // Declare:
-    reg signed [20:0] full_irinv;
+    reg signed [27:0] full_irinv;
+    reg signed [27:0] full_irinv_pipe;
     reg signed [21:0] it_10;
+    reg signed [21:0] it_10_pipe;
     wire signed [21:0] irinv_10;
     wire signed [18:0] pre_irinv_10;
     
     always @(posedge clk) begin
-        rA_abs_10    <= rA_abs_9;
-        it5_10        <= it5_9;
-        z_A_10        <= z_A_9;
-        phi_A_10        <= phi_A_9;
-        full_irinv     <= -idelta_phi_9 * iDelta_inv_9;
-        it_10         <= idelta_z_9 * iDelta_inv_9;
+        //rA_abs_10       <= rA_abs_9;
+        //it5_10          <= it5_9;
+        //z_A_10          <= z_A_9;
+        //phi_A_10        <= phi_A_9;    
+        full_irinv      <= idelta_phi_9 * iDelta_inv_9;
+        full_irinv_pipe <= full_irinv;
+        it_10           <= idelta_z_pipe9 * iDelta_inv_9;
+        it_10_pipe      <= it_10;
     end
     
-    assign irinv_10 = full_irinv <<< 1'b1;
-    assign pre_irinv_10 = full_irinv >>> 2'b10;
+    assign irinv_10 = full_irinv_pipe <<< 1'b1;
+    assign pre_irinv_10 = full_irinv_pipe >>> 2'b10;
+    
+    wire signed [21:0] it_pipe13;
+    
+    pipe_delay #(.STAGES(7), .WIDTH(22))
+        it_pipe(.pipe_in(en2_5), .pipe_out(en5b), .clk(clk),
+        .val_in(it_10_pipe), .val_out(it_pipe13));
+    
+    wire signed [21:0] irinv_pipe13;
+    
+    pipe_delay #(.STAGES(7), .WIDTH(22))
+        irinv_pipe(.pipe_in(en2_5), .pipe_out(en5b), .clk(clk),
+        .val_in(irinv_10), .val_out(irinv_pipe13));
     
     // Step 11:
-    // Carry over:
-    reg [35:0] it5_11;
     reg signed [12:0] rA_abs_11;
-    reg [11:0] z_A_11;
-    reg [16:0] phi_A_11;
     reg signed [21:0] it_11;
-    reg signed [21:0] irinv_11;
-    // Declare:
-    reg signed [31:0] full_it7;
+    wire signed [31:0] full_it7_test;
     wire signed [30:0] it7_11;
-    wire signed [10:0] it7_tmp_11;
-    wire signed [20:0] it7_tmp_sqr_11;
-    wire signed [12:0] pre_it_11;
+    reg signed [10:0] it7_tmp_11;
+    reg signed [20:0] it7_tmp_sqr_11;
+    reg signed [20:0] it7_tmp_sqr_11_pipe;
+    reg signed [12:0] pre_it_11;
+    
+    pipe_mult #(.STAGES(3), .AWIDTH(13), .BWIDTH(19))
+                full_it7_mult(.pipe_in(en_proc), .pipe_out(pipe), .clk(clk),
+                .a(rA_abs_pipe10), .b(pre_irinv_10), .p(full_it7_test));
     
     always @(posedge clk) begin
-        it5_11        <= it5_10;
-        rA_abs_11    <= rA_abs_10;
-        z_A_11        <= z_A_10;
-        phi_A_11        <= phi_A_10;
+        //it5_11        <= it5_10;
+        rA_abs_11    <= rA_abs_pipe10;
+        //z_A_11        <= z_A_10;
+        //phi_A_11        <= phi_A_10;
         it_11            <= it_10;
-        irinv_11        <= irinv_10;
-        full_it7     <= rA_abs_10 * pre_irinv_10;
+        //irinv_11        <= irinv_10;
+        pre_it_11             <= it_10_pipe >>> 4'd10;
+        it7_tmp_11         <= full_it7_test >>> 5'd25 ;
+        it7_tmp_sqr_11     <= it7_tmp_11 * it7_tmp_11 ;
+        it7_tmp_sqr_11_pipe <= it7_tmp_sqr_11;
     end
     
-    assign it7_11                 = full_it7 >>> 1'b1;
-    assign it7_tmp_11         = full_it7 >>> 5'd25 ;
-    assign it7_tmp_sqr_11     = it7_tmp_11 * it7_tmp_11 ;
-    assign pre_it_11             = it_11 >>> 4'd10;
+    assign it7_11                 = full_it7_test >>> 1'b1;
     
     // Step 12:
     // Carry over:
     reg signed [30:0] it7_12;
-    reg [35:0] it5_12;
-    reg [11:0] z_A_12;
-    reg [16:0] phi_A_12;
-    reg signed [21:0] irinv_12;
-    reg signed [21:0] it_12;
     // Declare:
     reg signed [25:0] it9_12;
     reg signed [25:0] full_pre_it12;
+    reg signed [25:0] full_pre_it12_pipe;
     wire signed [15:0] pre_it9_12;
     wire signed [15:0] pre_it7_12;      
-    wire signed [20:0] pre_it12_12;      
+    reg signed [20:0] pre_it12_12;      
     
     always @(posedge clk) begin
         it7_12             <= it7_11;
-        z_A_12            <= z_A_11;
-        phi_A_12            <= phi_A_11;
-        it_12                <= it_11;
-        irinv_12            <= irinv_11;
-        it9_12             <= 25'h1000000 + it7_tmp_sqr_11; // Top bits are constant and are trimmed during synthesis
+        //z_A_12            <= z_A_11;
+        //phi_A_12            <= phi_A_11;
+        //it_12                <= it_11;
+        //irinv_12            <= irinv_11;
+        it9_12             <= 25'h1000000 + it7_tmp_sqr_11_pipe; // Top bits are constant and are trimmed during synthesis
         full_pre_it12    <= pre_it_11 * rA_abs_11;
+        full_pre_it12_pipe <= full_pre_it12;
+        pre_it12_12     <= full_pre_it12_pipe >>> 3'h5;
     end
     
     assign pre_it9_12     = it9_12 >>> 4'd10;
     assign pre_it7_12     = it7_12 >>> 4'hf;
-    assign pre_it12_12     = full_pre_it12 >>> 3'h5;
     
     
     // Step 13:
-    // Carry over:
-    reg [11:0] z_A_13;
-    reg [16:0] phi_A_13;
-    reg signed [21:0] irinv_13;
-    reg signed [21:0] it_13;
-    // Declare:
     reg signed [31:0] it10_13;
+    reg signed [31:0] it10_13_pipe;
     reg signed [35:0] it12_13;
+    reg signed [35:0] it12_13_pipe;
+    reg signed [35:0] it12_13_pipe2;
     wire signed [19:0] pre_it10_13;
     wire signed [15:0] pre_it12_13;
     
     always @(posedge clk) begin
-        z_A_13    <= z_A_12;
-        phi_A_13    <= phi_A_12;
-        it_13        <= it_12;
-        irinv_13    <= irinv_12;
-        it10_13     <= pre_it7_12 * pre_it9_12;
-        it12_13     <= pre_it12_12 * pre_it9_12;
+        //z_A_13    <= z_A_12;
+        //phi_A_13    <= phi_A_12;
+        //it_13        <= it_12;
+        //irinv_13     <= irinv_12;
+        it10_13      <= pre_it7_12 * pre_it9_12;
+        it10_13_pipe <= it10_13;
+        it12_13      <= pre_it12_12 * pre_it9_12;
+        it12_13_pipe <= it12_13;
+        it12_13_pipe2 <= it12_13_pipe;
     end
     
-    assign pre_it10_13 = it10_13 >>> 5'd16; // size mismatch
-    assign pre_it12_13 = it12_13 >>> 5'h13; // NOT GOOD ENOUGH // size mismatch
+    assign pre_it10_13 = it10_13_pipe >>> 5'd16; // size mismatch
+    assign pre_it12_13 = it12_13_pipe2 >>> 5'h13; // NOT GOOD ENOUGH // size mismatch
     
     // Step 14:
     // Carry over:
@@ -691,15 +683,16 @@ module TrackletCombiner(
     (*KEEP = "true"*) reg signed [9:0] iz0_14;
     
     always @(posedge clk) begin
-        it_14            <= it_13>>>4'd10;
-        irinv_14        <= irinv_13>>>4'd13;
-        iphi0_14     <= (phi_A_13 + pre_it10_13)>>>1'b1;
-        iz0_14        <= z_A_13 - pre_it12_13;
+        it_14            <= it_pipe13>>>4'd10;
+        irinv_14        <= irinv_pipe13>>>4'd13;
+        iphi0_14     <= (phi_A_pipe13 + pre_it10_13)>>>1'b1;
+        iz0_14        <= z_A_pipe13 - pre_it12_13;
     end
     
     assign trackpar = {irinv_14,iphi0_14,iz0_14,it_14};
     
-    TrackletProjections_test #(14,12,9,9,1'b1,16'h86a) projection1(
+    
+TrackletProjections_test #(14,12,9,9,1'b1,16'h86a) projection1(
     // clocks and reset
         .clk(clk),                // processing clock
         .reset(reset),                        // active HI
@@ -800,3 +793,4 @@ module TrackletCombiner(
     );
     
 endmodule
+

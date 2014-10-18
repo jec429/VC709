@@ -173,24 +173,26 @@ module MatchCombiner(
     
     //////////////////////////////////////////////////////////////////
     
-    wire [PHI_BITS-1:0] iphi_proj_0;
-    wire [PHI_BITS-1:0] iphi_stub_0;
-    wire signed [Z_BITS-1:0] iz_stub_0;
-    wire signed [Z_BITS-1:0] iz_proj_0;
-    wire signed [PHID_BITS-1:0] iphi_der_0;
-    wire signed [ZD_BITS-1:0] iz_der_0;
-    wire signed [R_BITS-1:0] ir_stub_0;
+    reg [PHI_BITS-1:0] iphi_proj_0;
+    reg [PHI_BITS-1:0] iphi_stub_0;
+    reg signed [Z_BITS-1:0] iz_stub_0;
+    reg signed [Z_BITS-1:0] iz_proj_0;
+    reg signed [PHID_BITS-1:0] iphi_der_0;
+    reg signed [ZD_BITS-1:0] iz_der_0;
+    reg signed [R_BITS-1:0] ir_stub_0;
     reg [5:0] stub_index_0;
     reg [5:0] proj_index_0;
     
     // Step 0: Get the positions
-    assign iphi_stub_0     = allstubin[PHI_BITS-1:0];
-    assign iphi_proj_0     = allprojin[PHI_BITS+Z_BITS+ZD_BITS+PHID_BITS:Z_BITS+ZD_BITS+PHID_BITS];
-    assign iz_stub_0       = allstubin[Z_BITS+PHI_BITS-1:PHI_BITS];
-    assign iz_proj_0       = allprojin[Z_BITS+ZD_BITS+PHID_BITS:ZD_BITS+PHID_BITS];
-    assign iphi_der_0      = allprojin[ZD_BITS+PHID_BITS-1:ZD_BITS];
-    assign iz_der_0        = allprojin[ZD_BITS-1:0];
-    assign ir_stub_0       = allstubin[R_BITS+Z_BITS+PHI_BITS-1:Z_BITS+PHI_BITS];
+    always @(posedge clk) begin
+        iphi_stub_0     <= allstubin[PHI_BITS-1:0];
+        iphi_proj_0     <= allprojin[PHI_BITS+Z_BITS+ZD_BITS+PHID_BITS:Z_BITS+ZD_BITS+PHID_BITS];
+        iz_stub_0       <= allstubin[Z_BITS+PHI_BITS-1:PHI_BITS];
+        iz_proj_0       <= allprojin[Z_BITS+ZD_BITS+PHID_BITS:ZD_BITS+PHID_BITS];
+        iphi_der_0      <= allprojin[ZD_BITS+PHID_BITS-1:ZD_BITS];
+        iz_der_0        <= allprojin[ZD_BITS-1:0];
+        ir_stub_0       <= allstubin[R_BITS+Z_BITS+PHI_BITS-1:Z_BITS+PHI_BITS];
+    end
     
     always @(posedge clk) begin
         stub_index_0 <= read_add_allstub;
@@ -208,7 +210,9 @@ module MatchCombiner(
 
     // Declare:
     reg signed [15:0] full_ir_corr_1;
+    reg signed [15:0] full_ir_corr_pipe1;
     reg signed [15:0] full_iz_corr_1;
+    reg signed [15:0] full_iz_corr_pipe1;
     wire signed [10:0] ir_corr_1;
     wire signed [10:0] iz_corr_1;
     reg [5:0] stub_index_1;
@@ -227,8 +231,8 @@ module MatchCombiner(
         proj_index_1 <= proj_index_0;
     end
     
-    assign ir_corr_1 = full_ir_corr_1 >>> k1ABC;
-    assign iz_corr_1 = full_iz_corr_1 >>> k2ABC;
+    assign ir_corr_1 = full_ir_corr_pipe1 >>> k1ABC;
+    assign iz_corr_1 = full_iz_corr_pipe1 >>> k2ABC;
     
     // Step 2: Calculate the "better" positions
     // Carry Over:

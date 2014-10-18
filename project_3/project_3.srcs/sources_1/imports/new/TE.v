@@ -20,7 +20,9 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module TE(
+module TE #(parameter PHI_MEM = "D:/GLIB Firmware/branches/jectest/prj/viv_1/project_2/z1p1L1L2.txt",
+            parameter Z_MEM = "D:/GLIB Firmware/branches/jectest/prj/viv_1/project_2/z1p1L1L2.txt")
+    (
     input clk,
     input reset,
     input en_proc,
@@ -52,6 +54,8 @@ module TE(
     
     );
     
+    
+    
     initial begin
         read_add1 = 6'h3f;
         read_add2 = 6'h3f;
@@ -77,7 +81,7 @@ module TE(
     assign delta_phi = outervmstubin[4:2] - innervmstubin[4:2];
     assign delta_r   = outervmstubin[1:0] - innervmstubin[1:0];
     
-    Memory #(1,13,"D:/GLIB Firmware/branches/jectest/prj/viv_1/project_2/z1p1L1L2.txt") lookup_phi(
+    Memory #(1,13,PHI_MEM) lookup_phi(
         // Output
         .output_data(dout_phi),
         // Input
@@ -88,7 +92,7 @@ module TE(
         .input_data(1'b0)
     );
     
-    Memory #(1,12,"D:/GLIB Firmware/branches/jectest/prj/viv_1/project_2/z1p1L1L2.txt") lookup_z(
+    Memory #(1,12,Z_MEM) lookup_z(
         // Output
         .output_data(dout_z),
         // Input
